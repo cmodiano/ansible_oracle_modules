@@ -77,7 +77,7 @@ notes:
   - Keystore passwords are never logged (no_log=True)
 requirements: [ "oracledb" ]
 author:
-  - Cyrille (via Claude Code)
+  - Cyrille Modiano
 '''
 
 EXAMPLES = '''

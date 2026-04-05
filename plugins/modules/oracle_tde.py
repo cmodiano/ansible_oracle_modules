@@ -85,7 +85,7 @@ notes:
   - Requires ADMINISTER KEY MANAGEMENT or SYSKM privilege
 requirements: [ "oracledb" ]
 author:
-  - Cyrille (via Claude Code)
+  - Cyrille Modiano
 '''
 
 EXAMPLES = '''

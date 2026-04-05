@@ -111,7 +111,7 @@ notes:
   - Wallet passwords are never logged (no_log=True)
 requirements: []
 author:
-  - Cyrille (via Claude Code)
+  - Cyrille Modiano
 '''
 
 EXAMPLES = '''

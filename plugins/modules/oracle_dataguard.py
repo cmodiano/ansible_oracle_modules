@@ -122,7 +122,7 @@ notes:
   - oracledb Python module is required for SQL mode
 requirements: [ "oracledb" ]
 author:
-  - Cyrille (via Claude Code)
+  - Cyrille Modiano
 '''
 
 EXAMPLES = '''
