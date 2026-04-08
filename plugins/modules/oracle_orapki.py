@@ -565,7 +565,19 @@ def _add_cert(module):
                 changed=False,
             )
         dn_from_file = cert_dn or _get_cert_dn(module, cert_file)
-        if dn_from_file and _cert_exists_in_wallet(module, dn=dn_from_file):
+        if not dn_from_file:
+            module.warn(
+                'Could not determine certificate subject DN from cert_file '
+                '(orapki cert display did not return a Subject line).'
+            )
+            module.fail_json(
+                msg=(
+                    'cert_dn is required when the subject DN cannot be read '
+                    'from cert_file; supply cert_dn to enable idempotency checks.'
+                ),
+                changed=False,
+            )
+        if _cert_exists_in_wallet(module, dn=dn_from_file):
             return False
         if module.check_mode:
             return True

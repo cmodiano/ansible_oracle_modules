@@ -329,7 +329,11 @@ def test_orapki_add_trusted_cert(monkeypatch):
             cert_state="present", cert_type="trusted_cert",
             cert_file="/tmp/ca.crt",
         )
-        _orapki_responses = {'wallet add': (0, '', '')}
+        _orapki_responses = {
+            'cert display': (0, 'Subject: CN=TestCA,O=Test\n', ''),
+            'wallet display': (0, WALLET_DISPLAY_EMPTY, ''),
+            'wallet add': (0, '', ''),
+        }
         _commands_run = []
 
     monkeypatch.setattr(mod, "AnsibleModule", Mod)
@@ -351,7 +355,11 @@ def test_orapki_add_user_cert(monkeypatch):
             cert_state="present", cert_type="user_cert",
             cert_file="/tmp/server.crt",
         )
-        _orapki_responses = {'wallet add': (0, '', '')}
+        _orapki_responses = {
+            'cert display': (0, 'Subject: CN=server.example.com,O=Test\n', ''),
+            'wallet display': (0, WALLET_DISPLAY_EMPTY, ''),
+            'wallet add': (0, '', ''),
+        }
         _commands_run = []
 
     monkeypatch.setattr(mod, "AnsibleModule", Mod)
@@ -363,6 +371,36 @@ def test_orapki_add_user_cert(monkeypatch):
     assert result["changed"] is True
     cmd_str = ' '.join(Mod._commands_run[-1])
     assert '-user_cert' in cmd_str
+
+
+def test_orapki_add_trusted_cert_fails_without_dn_when_extraction_fails(monkeypatch):
+    mod = _load()
+    warnings_seen = []
+
+    class Mod(_OrapkiModule):
+        params = _orapki_params(
+            cert_state="present", cert_type="trusted_cert",
+            cert_file="/tmp/ca.crt",
+        )
+        _orapki_responses = {
+            'cert display': (0, 'No Subject line here\n', ''),
+        }
+        _commands_run = []
+
+        def warn(self, msg):
+            warnings_seen.append(msg)
+            super().warn(msg)
+
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "os", _make_fake_os(orapki_exists=True))
+
+    with pytest.raises(FailJson) as exc:
+        mod.main()
+    assert 'cert_dn is required' in exc.value.args[0]['msg']
+    assert warnings_seen and 'subject dn' in warnings_seen[0].lower()
+    assert Mod._commands_run
+    assert 'cert' in Mod._commands_run[0] and 'display' in Mod._commands_run[0]
+    assert not any('wallet' in c and 'add' in c for c in Mod._commands_run)
 
 
 def test_orapki_add_self_signed(monkeypatch):
