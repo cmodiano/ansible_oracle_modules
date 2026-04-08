@@ -519,6 +519,29 @@ def test_orapki_create_credential(monkeypatch):
     assert cmd[cmd.index('-pwd') + 1] == 'TestPass123'
 
 
+def test_orapki_create_credential_requires_user_and_password(monkeypatch):
+    mod = _load()
+
+    class Mod(_OrapkiModule):
+        params = _orapki_params(
+            credential_state="present",
+            credential_alias="primary_db",
+            credential_db="PROD",
+        )
+        _orapki_responses = {
+            'list_credentials': (0, LIST_CREDENTIALS_EMPTY, ''),
+        }
+        _commands_run = []
+
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "os", _make_fake_os(orapki_exists=True))
+
+    with pytest.raises(FailJson) as exc:
+        mod.main()
+    assert 'credential_user and credential_password are required' in exc.value.args[0]['msg']
+    assert not any('create_credential' in c for c in Mod._commands_run)
+
+
 def test_orapki_modify_credential(monkeypatch):
     mod = _load()
 

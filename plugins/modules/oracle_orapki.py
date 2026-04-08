@@ -730,6 +730,17 @@ def _upsert_credential(module, exists, connect_key):
         if exists and not credential_user and not credential_password:
             return False
 
+        # create_credential requires both username and password; avoid
+        # invoking orapki with a malformed command.
+        if not exists and (not credential_user or not credential_password):
+            module.fail_json(
+                msg=(
+                    'credential_user and credential_password are required '
+                    'when creating a new credential'
+                ),
+                changed=False,
+            )
+
         if module.check_mode:
             return True
 
