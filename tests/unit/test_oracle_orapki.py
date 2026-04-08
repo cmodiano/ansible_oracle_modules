@@ -317,6 +317,37 @@ def test_orapki_missing_binary_fails(monkeypatch):
     assert "orapki not found" in exc.value.args[0]["msg"]
 
 
+def test_run_orapki_fail_json_includes_binary_and_redacts(monkeypatch):
+    mod = _load()
+    oracle_home = "/fake/oracle"
+    orapki_path = "%s/bin/orapki" % oracle_home
+
+    class M(BaseFakeModule):
+        params = {"oracle_home": oracle_home}
+
+        def run_command(self, command, **kwargs):
+            return (1, "", "orapki error")
+
+    monkeypatch.setattr(mod, "os", _make_fake_os(orapki_exists=True))
+
+    with pytest.raises(FailJson) as exc:
+        mod._run_orapki(
+            M(),
+            [
+                "secretstore",
+                "list_credentials",
+                "-wallet",
+                "/w",
+                "-pwd",
+                "secret-value",
+            ],
+        )
+    shown = exc.value.args[0]["cmd"]
+    assert shown.startswith(orapki_path)
+    assert "********" in shown
+    assert "secret-value" not in shown
+
+
 # ===========================================================================
 # Tests: Certificate management
 # ===========================================================================

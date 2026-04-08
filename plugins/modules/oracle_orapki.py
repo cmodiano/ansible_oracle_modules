@@ -273,25 +273,26 @@ def _run_orapki(module, args):
     Fails the module on non-zero return code.
     """
     sensitive_flags = frozenset(('-pwd', '-oldpwd', '-newpwd', '-password', '-secret'))
-    safe_args = []
+    orapki_bin = _get_orapki_bin(module)
+    safe_cmd = [orapki_bin]
     redact_next = False
     for arg in args:
         if redact_next:
-            safe_args.append('********')
+            safe_cmd.append('********')
             redact_next = False
         elif arg in sensitive_flags:
-            safe_args.append(arg)
+            safe_cmd.append(arg)
             redact_next = True
         else:
-            safe_args.append(arg)
+            safe_cmd.append(arg)
 
-    cmd = [_get_orapki_bin(module)] + args
+    cmd = [orapki_bin] + args
     rc, stdout, stderr = module.run_command(cmd)
     if rc != 0:
         module.fail_json(
             msg='orapki failed: %s' % (stderr or stdout).strip(),
             rc=rc,
-            cmd=' '.join(safe_args),
+            cmd=' '.join(safe_cmd),
             changed=False,
         )
     return stdout, stderr
