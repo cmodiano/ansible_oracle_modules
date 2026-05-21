@@ -2615,12 +2615,12 @@ def test_tablespace_ensure_state_check_mode_just_created(monkeypatch):
     assert conn.ddls == []
 
 
-def test_tablespace_ensure_state_no_datafile_no_omf_fails(monkeypatch):
-    """ensure_tablespace_state: no datafile + no OMF → fail_json (lines 336-337)."""
+def test_tablespace_ensure_state_numfiles_add_no_datafile_no_omf_fails(monkeypatch):
+    """ensure_tablespace_state: adding files without datafile or OMF fails."""
     mod = _load_ts()
 
     class Mod(BaseFakeModule):
-        params = _ts_params_ext(bigfile=False, datafile=None, numfiles=None)
+        params = _ts_params_ext(bigfile=False, datafile=None, numfiles=2)
 
     ConnCls = _make_ts_conn_ext([
         {"tablespace_name": "TESTTS", "status": "ONLINE"},

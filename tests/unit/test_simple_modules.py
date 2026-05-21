@@ -337,6 +337,36 @@ def test_role_modify_with_password_redacts_auth_conf_from_ddls(monkeypatch):
     assert "identified by ********" in rendered.lower()
 
 
+def test_role_create_application_uses_authentication_package(monkeypatch):
+    mod = _load_role()
+
+    class Mod(BaseFakeModule):
+        params = _role_params(auth="application", auth_conf="APP_SCHEMA.AUTH_PKG")
+
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _RoleFakeConn(m, existing_auth=None), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    payload = exc.value.args[0]
+    assert payload["changed"] is True
+    assert any("identified using app_schema.auth_pkg" in d.lower() for d in payload["ddls"])
+
+
+def test_role_create_application_requires_authentication_package(monkeypatch):
+    mod = _load_role()
+
+    class Mod(BaseFakeModule):
+        params = _role_params(auth="application", auth_conf=None)
+
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _RoleFakeConn(m, existing_auth=None), raising=False)
+
+    with pytest.raises(FailJson) as exc:
+        mod.main()
+    assert "authentication package" in exc.value.args[0]["msg"]
+
+
 def test_role_create_global(monkeypatch):
     mod = _load_role()
 

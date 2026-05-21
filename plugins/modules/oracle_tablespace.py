@@ -169,13 +169,6 @@ def create_tablespace(conn, module):
     if numfiles is None:
         numfiles = 1
 
-    if not autoextend and not maxsize:
-        autoextend = True
-        nextsize = '100M'
-        maxsize = 'unlimited'
-        # msg = 'Error: Missing parameter - size'
-        # module.fail_json(msg=msg, changed=False)
-
     if bigfile and datafile is not None:
         if len(datafile)>1 or int(numfiles) > 1:
             msg='Only one datafile allowed in BIGFILE tablespace'
@@ -332,7 +325,8 @@ def ensure_tablespace_state (conn, module, tbs_just_created=False):
     crfiles = r['count']
 
     # The following if/elif deals with adding data/temp-files
-    if not skip_datafile and datafile is None:
+    wants_more_files = numfiles is not None and int(crfiles) < int(numfiles) and not bigfile
+    if not skip_datafile and datafile is None and wants_more_files:
         msg = 'Error: Missing datafile name/datafile. Either set db_create_file_dest or specify one or more datafiles'
         module.fail_json(msg=msg, changed=conn.changed, ddls=conn.ddls)
 

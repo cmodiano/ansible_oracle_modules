@@ -70,7 +70,7 @@ def create_role(conn, module):
         else:
             sql += ' identified by %s' % auth_conf
     elif auth == 'application':
-        if auth_conf:
+        if not auth_conf:
             module.fail_json(msg='Missing authentication package (schema.name)', changed=False)
         else:
             sql += ' identified using %s' % auth_conf

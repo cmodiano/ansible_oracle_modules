@@ -1298,7 +1298,7 @@ def test_user_creates_with_container_data(monkeypatch):
         mod.main()
     ddls = exc.value.args[0]["ddls"]
     assert len(ddls) >= 2
-    assert any("set container_data" in d.lower() for d in ddls)
+    assert any("set container_data=objecttype" in d.lower() for d in ddls)
 
 
 def test_user_modify_change_password(monkeypatch):
@@ -1573,7 +1573,9 @@ def test_user_modify_to_global_auth(monkeypatch):
 
     with pytest.raises(ExitJson) as exc:
         mod.main()
-    assert exc.value.args[0]["changed"] is True
+    payload = exc.value.args[0]
+    assert payload["changed"] is True
+    assert any("identified globally" in d.lower() for d in payload["ddls"])
 
 
 def test_user_modify_to_none_auth(monkeypatch):
@@ -1627,7 +1629,7 @@ def test_user_modify_container_data_existing(monkeypatch):
     with pytest.raises(ExitJson) as exc:
         mod.main()
     ddls = exc.value.args[0]["ddls"]
-    assert any("set container_data" in d.lower() for d in ddls)
+    assert any("set container_data=objecttype" in d.lower() for d in ddls)
 
 
 # ===========================================================================
@@ -1763,7 +1765,7 @@ def test_tablespace_creates_temp_with_explicit_datafile(monkeypatch):
 
 
 def test_tablespace_creates_with_datafile_explicit_no_autoextend(monkeypatch):
-    """Create tablespace with explicit datafile and maxsize set but no autoextend."""
+    """Create tablespace with explicit datafile and no autoextend."""
     mod = _load("oracle_tablespace")
 
     class Mod(BaseFakeModule):
@@ -1771,7 +1773,6 @@ def test_tablespace_creates_with_datafile_explicit_no_autoextend(monkeypatch):
             bigfile=False,
             datafile=["/u01/data/test02.dbf"],
             autoextend=False,
-            maxsize="2G",  # prevents auto-set to autoextend=True
         )
 
     class _Conn(SequencedFakeConn):
@@ -1790,7 +1791,37 @@ def test_tablespace_creates_with_datafile_explicit_no_autoextend(monkeypatch):
 
     with pytest.raises(ExitJson) as exc:
         mod.main()
-    assert exc.value.args[0]["changed"] is True
+    payload = exc.value.args[0]
+    assert payload["changed"] is True
+    create_ddl = next(d for d in payload["ddls"] if "create smallfile tablespace" in d.lower())
+    assert "autoextend on" not in create_ddl.lower()
+
+
+def test_tablespace_read_only_no_omf_without_datafile(monkeypatch):
+    """Existing tablespace can change state without requiring a datafile."""
+    mod = _load("oracle_tablespace")
+
+    class Mod(BaseFakeModule):
+        params = _ts_params(state="read_only", datafile=None)
+
+    class _Conn(SequencedFakeConn):
+        def __init__(self, m):
+            super().__init__(m)
+            self.responses = [
+                {"tablespace_name": "TESTTS", "status": "ONLINE"},
+                {"value": None},          # OMF disabled
+                {"status": "ONLINE"},
+                {"count": 1},
+            ]
+
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", _Conn, raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    payload = exc.value.args[0]
+    assert payload["changed"] is True
+    assert any("read only" in d.lower() for d in payload["ddls"])
 
 
 def test_tablespace_present_when_read_only(monkeypatch):

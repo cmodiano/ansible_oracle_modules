@@ -255,7 +255,7 @@ def create_user(conn, module):
     )
 
     if container_data:
-        alter_sql = 'alter user %s set container_data=%s container=current' % (schema, container)
+        alter_sql = 'alter user %s set container_data=%s container=current' % (schema, container_data)
         conn.execute_ddl(alter_sql)
 
     msg = 'The schema %s has been created successfully' % schema
@@ -405,8 +405,6 @@ def modify_user(conn, module, user):
     elif authentication_type == 'IDENTIFIED EXTERNALLY':
         sql += ''' identified externally '''
     elif authentication_type == 'IDENTIFIED GLOBALLY':
-        wanted_set.add(('authentication_type', 'IDENTIFIED EXTERNALLY'))
-    elif authentication_type == 'global':
         sql += ''' identified globally '''
     elif authentication_type == 'NONE':
         sql += ''' no authentication '''
@@ -440,7 +438,7 @@ def modify_user(conn, module, user):
         )
 
     if container_data:
-        alter_sql = 'alter user %s set container_data=%s container=current' % (schema, container)
+        alter_sql = 'alter user %s set container_data=%s container=current' % (schema, container_data)
         conn.execute_ddl(alter_sql)
 
     # wanted list is subset of current settings, do not do anything
