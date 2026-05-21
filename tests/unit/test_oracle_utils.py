@@ -36,6 +36,52 @@ def test_execute_ddl_marks_changed_in_check_mode():
     assert conn.ddls[0].startswith("--")
 
 
+def test_execute_ddl_failure_reports_safe_ddls_entry():
+    utils = load_module_from_path(
+        module_path("plugins", "module_utils", "oracle_utils.py"), "oracle_utils_test_ddl_error"
+    )
+
+    class FakeErrorObj:
+        code = 46633
+        message = "creation of a password-based keystore failed"
+
+    class FakeOracleDb:
+        class DatabaseError(Exception):
+            pass
+
+    class FailingCursor:
+        def execute(self, _sql, _params=None):
+            raise FakeOracleDb.DatabaseError(FakeErrorObj())
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    class FailingConn:
+        def cursor(self):
+            return FailingCursor()
+
+    utils.oracledb = FakeOracleDb
+    conn = _new_conn_instance(utils)
+    conn.conn = FailingConn()
+
+    try:
+        conn.execute_ddl(
+            'ADMINISTER KEY MANAGEMENT CREATE KEYSTORE "/tmp" IDENTIFIED BY "Secret123"',
+            ddls_entry='ADMINISTER KEY MANAGEMENT CREATE KEYSTORE "/tmp" IDENTIFIED BY "***"',
+        )
+    except FailJson as exc:
+        payload = exc.args[0]
+    else:
+        raise AssertionError("execute_ddl should fail")
+
+    assert payload["code"] == 46633
+    assert payload["ddls"] == ['ADMINISTER KEY MANAGEMENT CREATE KEYSTORE "/tmp" IDENTIFIED BY "***"']
+    assert "Secret123" not in repr(payload)
+
+
 def test_set_container_rejects_invalid_name():
     utils = load_module_from_path(module_path("plugins", "module_utils", "oracle_utils.py"), "oracle_utils_test_2")
     conn = _new_conn_instance(utils, check_mode=True)

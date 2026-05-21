@@ -371,7 +371,10 @@ class oracleConnection:
         except oracledb.DatabaseError as e:
             error = e.args[0]
             if error.code not in ignore_errors:
-                self.module.fail_json(msg=error.message, code=error.code, ddls=self.ddls, changed=self.changed)
+                ddls = self.ddls
+                if ddls_entry is not None:
+                    ddls = self.ddls + [trace]
+                self.module.fail_json(msg=error.message, code=error.code, ddls=ddls, changed=self.changed)
             else:
                 pass
 

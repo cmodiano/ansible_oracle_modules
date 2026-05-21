@@ -111,3 +111,27 @@ def test_oracle_sql_check_mode_app_select_has_credentials():
     assert "<<: *app_con_param" in task_block
     assert "username: foo" in task_block
     assert "password: Xlfsjflkdjgkrehjg1" in task_block
+
+
+def test_oracle_acl_integration_cleans_stale_aces_before_check_mode_create():
+    content = module_path(
+        "tests", "integration", "targets", "test_oracle_acl", "tasks", "create_delete.yml"
+    ).read_text(encoding="utf-8")
+    setup_block = content.split('# \u2500\u2500 Grant connect ACE', 1)[0]
+    assert "setup: remove stale ACL test ACEs" in setup_block
+    assert "state: absent" in setup_block
+    assert "*.example.com" in setup_block
+    assert "mail.example.com" in setup_block
+    assert "smtp.example.com" in setup_block
+
+
+def test_oracle_tde_integration_creates_wallet_directory_before_keystore():
+    content = module_path(
+        "tests", "integration", "targets", "test_oracle_tde", "tasks", "setup_keystore.yml"
+    ).read_text(encoding="utf-8")
+    setup_block = content.split('- name: "create keystore (if not exists)"', 1)[0]
+    assert "make sure wallet directory exists" in setup_block
+    assert "file:" in setup_block
+    assert 'path: "{{ oracle_wallet_location }}"' in setup_block
+    assert "state: directory" in setup_block
+    assert "when: running_on_server | bool" in setup_block
