@@ -254,7 +254,7 @@ def test_dg_broker_wallet_connect_identifier_is_not_double_prefixed(monkeypatch)
     with pytest.raises(ExitJson):
         mod.main()
     scripts = [kwargs.get('data', '') for _args, kwargs in Mod._run_command_calls]
-    assert any('CONNECT /@EMEA_AT_EMEA;' in script for script in scripts)
+    assert any('CONNECT /@EMEA_AT_EMEA AS SYSDG;' in script for script in scripts)
     assert not any('CONNECT /@/@EMEA_AT_EMEA;' in script for script in scripts)
     assert Mod._warnings == []
 
