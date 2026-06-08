@@ -420,6 +420,8 @@ def run_dgmgrl(module, commands, output_format='text'):
             connect_string = dgmgrl_connect_id
         else:
             connect_string = '/@%s' % dgmgrl_connect_id
+        if dgmgrl_as:
+            connect_string += ' AS %s' % dgmgrl_as.upper()
     else:
         # OS authentication
         connect_string = '/ AS %s' % dgmgrl_as.upper()
