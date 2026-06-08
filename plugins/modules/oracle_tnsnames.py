@@ -184,7 +184,10 @@ def main():
             old_content = file.read()
     except FileNotFoundError as e:
         old_content = ''
-        # Try to create an empty tnsnames.ora file
+        # Try to create an empty tnsnames.ora file (including any missing parents)
+        parent = os.path.dirname(filename)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         open(filename, 'a').close()
 
     orafile = DotOraFile(filename)
