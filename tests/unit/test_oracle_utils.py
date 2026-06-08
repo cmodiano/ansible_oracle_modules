@@ -26,6 +26,58 @@ def _new_conn_instance(utils_module, check_mode=False):
     return conn
 
 
+class _FakeDbErrorObj:
+    def __init__(self, code):
+        self.code = code
+        self.message = "ORA-{:05d}: simulated failure".format(code)
+
+
+class _FailingCursor:
+    def __init__(self, database_error, error_code=955):
+        self.database_error = database_error
+        self.error_code = error_code
+
+    def execute(self, _sql, _params=None):
+        raise self.database_error(_FakeDbErrorObj(self.error_code))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+def test_execute_ddl_does_not_record_failed_statement_in_ddls():
+    utils = load_module_from_path(module_path("plugins", "module_utils", "oracle_utils.py"), "oracle_utils_test_fail_ddl")
+    conn = _new_conn_instance(utils, check_mode=False)
+    conn.conn = _DummyConn()
+    conn.conn.cursor = lambda: _FailingCursor(utils.oracledb.DatabaseError, error_code=955)
+
+    conn.ddls.append("create user prior identified by bar")
+
+    try:
+        conn.execute_ddl("create user foo identified by bar")
+    except FailJson as exc:
+        payload = exc.args[0]
+        assert payload["ddls"] == ["create user prior identified by bar"]
+        assert "ORA-00955" in payload["msg"]
+    else:
+        raise AssertionError("execute_ddl should fail on DatabaseError")
+
+    assert conn.ddls == ["create user prior identified by bar"]
+
+
+def test_execute_ddl_records_statement_only_after_success():
+    utils = load_module_from_path(module_path("plugins", "module_utils", "oracle_utils.py"), "oracle_utils_test_success_ddl")
+    conn = _new_conn_instance(utils, check_mode=False)
+    conn.conn = _DummyConn()
+
+    conn.execute_ddl("create user foo identified by bar")
+
+    assert conn.ddls == ["create user foo identified by bar"]
+    assert conn.changed is True
+
+
 def test_execute_ddl_marks_changed_in_check_mode():
     utils = load_module_from_path(module_path("plugins", "module_utils", "oracle_utils.py"), "oracle_utils_test_1")
     conn = _new_conn_instance(utils, check_mode=True)
