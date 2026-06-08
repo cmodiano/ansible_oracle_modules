@@ -203,3 +203,49 @@ def test_absent_state_follow_symlink_and_missing_alias(monkeypatch, tmp_path):
         assert payload["msg"] == "TEST_ALIAS="
     else:
         raise AssertionError("module should exit_json")
+
+
+def test_follow_broken_relative_symlink_creates_resolved_target(monkeypatch, tmp_path):
+    mod = load_module_from_path(module_path("plugins", "modules", "oracle_tnsnames.py"), "oracle_tns_test_broken_link")
+    link_dir = tmp_path / "network"
+    link_dir.mkdir()
+    target_file = link_dir / "tnsnames.ora"
+    link_file = link_dir / "link.ora"
+    link_file.symlink_to("tnsnames.ora")
+    seen = {}
+
+    class MissingTargetDotOra(FakeDotOraFile):
+        def __init__(self, filename):
+            seen["filename"] = filename
+            assert Path(filename) == target_file
+            assert Path(filename).exists()
+            super().__init__(filename)
+
+    FakeAnsibleModule.params = {
+        "path": str(link_file),
+        "follow": True,
+        "backup": False,
+        "state": "present",
+        "alias": "TEST_ALIAS",
+        "whole_value": "X",
+        "attribute_path": None,
+        "attribute_name": None,
+        "attribute_value": None,
+        "check_mode": True,
+    }
+
+    monkeypatch.setattr(mod, "AnsibleModule", FakeAnsibleModule)
+    monkeypatch.setattr(mod, "DotOraFile", MissingTargetDotOra, raising=False)
+    monkeypatch.setattr(mod, "write_changes", lambda *_args, **_kwargs: None)
+
+    try:
+        mod.main()
+    except ExitJson as exc:
+        payload = exc.args[0]
+        assert payload["msg"] == "TEST_ALIAS=(DESCRIPTION=...)"
+    else:
+        raise AssertionError("module should exit_json")
+
+    assert Path(seen["filename"]) == target_file
+    assert target_file.exists()
+    assert not (tmp_path / "tnsnames.ora").exists()

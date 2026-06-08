@@ -175,14 +175,17 @@ def main():
     try:
         if module.params["follow"]:
             while os.path.islink(filename):
-                filename = os.readlink(filename)
+                link_target = os.readlink(filename)
+                if not os.path.isabs(link_target):
+                    link_target = os.path.join(os.path.dirname(filename), link_target)
+                filename = link_target
 
         with open(filename, "r") as file:
             old_content = file.read()
     except FileNotFoundError as e:
         old_content = ''
         # Try to create an empty tnsnames.ora file
-        open(module.params["path"], 'a').close()
+        open(filename, 'a').close()
 
     orafile = DotOraFile(filename)
 
