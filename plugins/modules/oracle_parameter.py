@@ -190,8 +190,7 @@ def main():
             scope=dict(default="both", choices=["both", "spfile", "memory"]),
             sid=dict(default="*"),
         ),
-        required_if=[('mode', 'normal', ('username', 'password', 'service_name')),
-                     ('state', 'present', ['value'])],
+        required_if=[('state', 'present', ['value'])],
         required_together=[['user', 'password']],
         supports_check_mode=True
     )

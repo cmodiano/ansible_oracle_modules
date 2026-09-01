@@ -142,7 +142,6 @@ def main():
             sql=dict(required=False),
             script=dict(required=False),            
         ),
-        required_if=[('mode', 'normal', ('username', 'password', 'service_name'))],
         required_one_of=[('sql', 'script')],
         mutually_exclusive=[('sql', 'script')],
         required_together=[('username', 'password')],
