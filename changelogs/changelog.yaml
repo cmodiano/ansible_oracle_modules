@@ -88,3 +88,11 @@ releases:
       name: oracle_wallet
       namespace: ''
     release_date: '2026-06-27'
+  3.4.1:
+    release_date: '2026-07-01'
+  3.4.2:
+    release_date: '2026-09-01'
+    changes:
+      minor_changes:
+      - Fix for oracle_parameter, allow wallet login
+      - Fix for oracle_user, allow wallet login

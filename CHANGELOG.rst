@@ -4,6 +4,19 @@ Ibre5041.Ansible\_Oracle\_Modules Release Notes
 
 .. contents:: Topics
 
+v3.4.2
+======
+
+Minor Changes
+-------------
+
+- Fix for oracle_parameter, allow wallet login
+- Fix for oracle_user, allow wallet login
+
+v3.4.1
+======
+
+
 v3.4.0
 ======
 
