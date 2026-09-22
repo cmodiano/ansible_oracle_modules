@@ -34,6 +34,7 @@ def _user_params(**overrides):
         "authentication_type": "password",
         "container": None,
         "container_data": None,
+        "external_name": None,
     }
     base.update(overrides)
     return base
@@ -65,6 +66,15 @@ def _default_user_row():
         "authentication_type": "PASSWORD",
         "oracle_maintained": "N",
         "password_status": "UNEXPIRED",
+        "external_name": None,
+    }
+
+
+def _external_user_row(external_name=None):
+    return {
+        **_default_user_row(),
+        "authentication_type": "EXTERNAL",
+        "external_name": external_name,
     }
 
 
@@ -1527,6 +1537,315 @@ def test_user_modify_container_data_existing(monkeypatch):
         mod.main()
     ddls = exc.value.args[0]["ddls"]
     assert any("set container_data" in d.lower() for d in ddls)
+
+
+def test_user_modify_container_data_idempotent(monkeypatch):
+    """Existing user already has container_data=ALL → no DDL, changed=False."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(
+            schema_password=None,
+            container="all",
+            container_data="objecttype",
+        )
+
+    row = _default_user_row()
+
+    class _ContainerDataConn(_UserConn):
+        def execute_select_to_dict(self, sql, params=None, fetchone=False, fail_on_error=True):
+            if "container_data" in sql.lower():
+                return {"all_containers": "Y"}
+            return super().execute_select_to_dict(sql, params, fetchone, fail_on_error)
+
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _ContainerDataConn(m, row), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    payload = exc.value.args[0]
+    assert payload["changed"] is False
+    assert not any("set container_data" in d.lower() for d in payload["ddls"])
+
+
+# ---------------------------------------------------------------------------
+# oracle_user - IDENTIFIED EXTERNALLY [AS 'name']
+# ---------------------------------------------------------------------------
+
+def test_user_creates_external_with_name(monkeypatch):
+    """Create external user with external_name → identified externally as 'name'."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(
+            schema_password=None,
+            authentication_type="external",
+            external_name="CN=app,OU=eng,O=acme",
+        )
+
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, None), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    ddls = exc.value.args[0]["ddls"]
+    assert any("identified externally as 'cn=app,ou=eng,o=acme'" in d.lower() for d in ddls)
+
+
+def test_user_external_name_requires_external_auth(monkeypatch):
+    """external_name with authentication_type != external → fail_json."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(authentication_type="password", external_name="CN=x")
+
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, None), raising=False)
+
+    with pytest.raises(FailJson) as exc:
+        mod.main()
+    assert "external" in exc.value.args[0]["msg"].lower()
+
+
+def test_user_modify_external_add_name(monkeypatch):
+    """Existing bare-external user, add external_name → alter identified externally as 'name'."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(
+            schema_password=None,
+            authentication_type="external",
+            external_name="CN=x",
+        )
+
+    row = _external_user_row(external_name=None)
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, row), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    payload = exc.value.args[0]
+    assert payload["changed"] is True
+    assert any("identified externally as 'cn=x'" in d.lower() for d in payload["ddls"])
+
+
+def test_user_modify_external_name_idempotent(monkeypatch):
+    """Existing external AS 'CN=x', set same → no DDL, changed=False."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(
+            schema_password=None,
+            authentication_type="external",
+            external_name="CN=x",
+        )
+
+    row = _external_user_row(external_name="CN=x")
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, row), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    payload = exc.value.args[0]
+    assert payload["changed"] is False
+    assert not any("identified externally" in d.lower() for d in payload["ddls"])
+
+
+def test_user_modify_external_change_name(monkeypatch):
+    """Existing external AS 'CN=x', set 'CN=y' → alter to new name."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(
+            schema_password=None,
+            authentication_type="external",
+            external_name="CN=y",
+        )
+
+    row = _external_user_row(external_name="CN=x")
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, row), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    payload = exc.value.args[0]
+    assert payload["changed"] is True
+    assert any("identified externally as 'cn=y'" in d.lower() for d in payload["ddls"])
+
+
+def test_user_modify_external_downgrade_to_bare(monkeypatch):
+    """Existing external AS 'CN=x', omit external_name → downgrade to bare identified externally."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(schema_password=None, authentication_type="external")
+
+    row = _external_user_row(external_name="CN=x")
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, row), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    payload = exc.value.args[0]
+    assert payload["changed"] is True
+    ddls = [d.lower() for d in payload["ddls"]]
+    assert any("identified externally" in d for d in ddls)
+    assert not any(" as '" in d for d in ddls)
+
+
+def test_user_modify_external_bare_idempotent(monkeypatch):
+    """Existing bare-external user, auth=external no name → no DDL, changed=False."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(schema_password=None, authentication_type="external")
+
+    row = _external_user_row(external_name=None)
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, row), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    payload = exc.value.args[0]
+    assert payload["changed"] is False
+
+
+def test_user_modify_global_idempotent(monkeypatch):
+    """Existing GLOBAL user, auth=global → no DDL, changed=False."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(schema_password=None, authentication_type="global")
+
+    row = {**_default_user_row(), "authentication_type": "GLOBAL"}
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, row), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    assert exc.value.args[0]["changed"] is False
+
+
+# ===========================================================================
+# oracle_user - ACCOUNT_STATUS parsing and secret redaction
+# ===========================================================================
+
+class _NoFailJsonUserConn(_UserConn):
+    """Mirrors the real oracleConnection, which has no fail_json method."""
+
+    def __getattribute__(self, name):
+        if name == "fail_json":
+            raise AttributeError(
+                "'oracleConnection' object has no attribute 'fail_json'"
+            )
+        return super().__getattribute__(name)
+
+
+def _dba_users_row(account_status):
+    """Row as returned by the dba_users query in check_user_exists()."""
+    return {
+        "username": "TESTUSER",
+        "account_status": account_status,
+        "default_tablespace": "USERS",
+        "temporary_tablespace": "TEMP",
+        "profile": "DEFAULT",
+        "authentication_type": "PASSWORD",
+        "external_name": None,
+        "oracle_maintained": "N",
+    }
+
+
+# (ACCOUNT_STATUS, expected account_status, expected password_status).
+# EXPIRED(GRACE) keeps the password usable, so it maps to UNEXPIRED.
+ACCOUNT_STATUS_CASES = [
+    ("OPEN", "OPEN", "UNEXPIRED"),
+    ("EXPIRED", "OPEN", "EXPIRED"),
+    ("EXPIRED(GRACE)", "OPEN", "UNEXPIRED"),
+    ("LOCKED", "LOCKED", "UNEXPIRED"),
+    ("LOCKED(TIMED)", "LOCKED", "UNEXPIRED"),
+    ("EXPIRED & LOCKED", "LOCKED", "EXPIRED"),
+    ("EXPIRED & LOCKED(TIMED)", "LOCKED", "EXPIRED"),
+    ("EXPIRED(GRACE) & LOCKED", "LOCKED", "UNEXPIRED"),
+    ("EXPIRED(GRACE) & LOCKED(TIMED)", "LOCKED", "UNEXPIRED"),
+    ("OPEN & IN ROLLOVER", "OPEN", "UNEXPIRED"),
+    ("EXPIRED & IN ROLLOVER", "OPEN", "EXPIRED"),
+    ("EXPIRED(GRACE) & IN ROLLOVER", "OPEN", "UNEXPIRED"),
+]
+
+
+@pytest.mark.parametrize("acs,account_status,password_status", ACCOUNT_STATUS_CASES)
+def test_user_account_status_parsing(acs, account_status, password_status):
+    """Every dba_users.account_status combination is decoded, not just four of them."""
+    mod = _load("oracle_user")
+    conn = _NoFailJsonUserConn(BaseFakeModule(), _dba_users_row(acs))
+
+    user = dict(mod.check_user_exists(conn, "TESTUSER"))
+
+    assert user["account_status"] == account_status
+    assert user["password_status"] == password_status
+
+
+def test_user_unsupported_account_status_fails_via_module():
+    """An unknown account_status fails through module.fail_json, not conn.fail_json."""
+    mod = _load("oracle_user")
+    conn = _NoFailJsonUserConn(BaseFakeModule(), _dba_users_row("SOMETHING NEW"))
+
+    with pytest.raises(FailJson) as exc:
+        mod.check_user_exists(conn, "TESTUSER")
+    assert "SOMETHING NEW" in exc.value.args[0]["msg"]
+
+
+def test_user_grace_period_password_not_reset(monkeypatch):
+    """EXPIRED(GRACE) + expired=false → no password reset, no change."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(schema_password=None, expired=False)
+
+    row = {**_default_user_row(), "account_status": "EXPIRED(GRACE)"}
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, row), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    assert exc.value.args[0]["changed"] is False
+
+
+def test_user_modify_unlock_from_locked_timed(monkeypatch):
+    """LOCKED(TIMED) + locked=false → account unlock."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params(schema_password=None, locked=False)
+
+    row = {**_default_user_row(), "account_status": "LOCKED(TIMED)"}
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, row), raising=False)
+
+    with pytest.raises(ExitJson) as exc:
+        mod.main()
+    assert any("account unlock" in d.lower() for d in exc.value.args[0]["ddls"])
+
+
+def test_user_does_not_trim_secrets(monkeypatch):
+    """Secrets are exempt from whitespace trimming, so no_log still matches them."""
+    mod = _load("oracle_user")
+
+    class Mod(BaseFakeModule):
+        params = _user_params()
+
+    captured = {}
+
+    def spy(module_params, no_trim=None):
+        captured["no_trim"] = set(no_trim or ())
+
+    monkeypatch.setattr(mod, "AnsibleModule", Mod)
+    monkeypatch.setattr(mod, "sanitize_string_params", spy)
+    monkeypatch.setattr(mod, "oracleConnection", lambda m: _UserConn(m, None), raising=False)
+
+    with pytest.raises(ExitJson):
+        mod.main()
+    assert {"schema_password", "schema_password_hash", "password"} <= captured["no_trim"]
 
 
 # ===========================================================================
